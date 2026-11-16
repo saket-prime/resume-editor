@@ -6,6 +6,7 @@ No SMTP connection, mailbox password, or backend sending is used.
 import html
 import json
 import re
+import base64
 from urllib.parse import quote, urlencode
 
 
@@ -128,25 +129,19 @@ def formatted_body(body):
 
 
 def share_html(recipient, subject, body, pdf, filename):
-    """Build a blank-body email draft and formatted-message controls.
-
-    pdf and filename are retained for compatibility with app.py.
-    The PDF must be downloaded and attached manually.
-    """
+    """Compact download and email controls without a preview."""
     recipient = validate_email(recipient)
-    rich_body = formatted_body(body)
 
     payload = json.dumps(
         {
             "recipient": recipient,
             "text": body,
-            "html": rich_body,
+            "html": formatted_body(body),
         },
         ensure_ascii=True,
     ).replace("<", "\\u003c")
 
-    # Include only the recipient and subject.
-    # The message body is deliberately omitted.
+    # Recipient and subject only. Email body remains blank.
     mailto = (
         "mailto:"
         + quote(recipient, safe="@")
@@ -157,6 +152,11 @@ def share_html(recipient, subject, body, pdf, filename):
         )
     )
 
+    pdf_url = (
+        "data:application/pdf;base64,"
+        + base64.b64encode(pdf).decode("ascii")
+    )
+
     template = """
 <!doctype html>
 <html>
@@ -164,87 +164,125 @@ def share_html(recipient, subject, body, pdf, filename):
     <meta name="viewport" content="width=device-width, initial-scale=1">
 
     <style>
+        * {
+            box-sizing: border-box;
+        }
+
         body {
-            font: 14px system-ui, sans-serif;
-            color: #162c28;
             margin: 0;
+            font-family: system-ui, sans-serif;
+            color: #162c28;
+        }
+
+        .actions {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 6px;
         }
 
         button,
         a {
-            box-sizing: border-box;
-            font: 600 14px system-ui, sans-serif;
-            display: inline-block;
-            border-radius: 10px;
-            padding: 12px 14px;
-            margin: 0 6px 8px 0;
-            cursor: pointer;
-        }
-
-        button {
-            background: #19755d;
-            color: white;
-            border: 0;
-        }
-
-        a {
-            color: #19755d;
-            border: 1px solid #bdd5cb;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 0;
+            min-height: 40px;
+            margin: 0;
+            padding: 8px 5px;
+            border: 1px solid #b8cec3;
+            border-radius: 8px;
+            background: #ffffff;
+            color: #195b46;
+            font: 600 12px system-ui, sans-serif;
+            line-height: 1.2;
+            text-align: center;
             text-decoration: none;
-        }
-
-        #status {
-            line-height: 1.4;
+            cursor: pointer;
             overflow-wrap: anywhere;
         }
 
-        #preview {
-            max-height: 125px;
-            overflow: auto;
-            border: 1px solid #dbe5df;
-            padding: 10px;
-            border-radius: 8px;
-            margin-top: 8px;
-            user-select: text;
-            -webkit-user-select: text;
+        .primary {
+            background: #19755d;
+            border-color: #19755d;
+            color: #ffffff;
         }
 
-        summary {
-            cursor: pointer;
+        button:hover,
+        a:hover {
+            filter: brightness(.96);
+        }
+
+        button:focus-visible,
+        a:focus-visible {
+            outline: 2px solid #19755d;
+            outline-offset: 2px;
+        }
+
+        #status {
+            margin: 5px 0 0;
+            font-size: 11px;
+            line-height: 1.3;
+            color: #526b61;
+            overflow-wrap: anywhere;
+        }
+
+        #status:empty {
+            display: none;
+        }
+
+        @media (max-width: 420px) {
+            .actions {
+                gap: 4px;
+            }
+
+            button,
+            a {
+                font-size: 10px;
+                min-height: 42px;
+                padding: 6px 3px;
+            }
         }
     </style>
 </head>
 
 <body>
-    <button id="formatted" type="button">
-        Copy formatted message
-    </button>
+    <div class="actions">
+        <a
+            href="__PDF_URL__"
+            download="__FILENAME__"
+            aria-label="Download candidate offer PDF"
+        >
+            Download PDF
+        </a>
 
-    <a
-        href="__MAILTO__"
-        target="_blank"
-        rel="noopener noreferrer"
-    >
-        Open email draft
-    </a>
+        <button
+            id="formatted"
+            class="primary"
+            type="button"
+            aria-label="Copy formatted email message"
+        >
+            Copy message
+        </button>
 
-    <button id="recipient" type="button">
-        Copy recipient
-    </button>
+        <a
+            href="__MAILTO__"
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="Open email draft with recipient and subject"
+        >
+            Open draft
+        </a>
 
-    <p id="status" role="status" aria-live="polite">
-        Copy the formatted message, open the email draft,
-        and paste into the blank message body.
-        Attach the downloaded PDF manually.
-    </p>
+        <button
+            id="recipient"
+            type="button"
+            aria-label="Copy candidate email address"
+        >
+            Copy recipient
+        </button>
+    </div>
 
-    <details>
-        <summary>
-            Formatted preview / select and copy manually
-        </summary>
-
-        <div id="preview">__PREVIEW__</div>
-    </details>
+    <p id="status" role="status" aria-live="polite"></p>
 
     <script>
         const data = __PAYLOAD__;
@@ -260,30 +298,26 @@ def share_html(recipient, subject, body, pdf, filename):
                     throw new Error("Formatted clipboard unavailable");
                 }
 
-                const item = new ClipboardItem({
-                    "text/html": new Blob(
-                        [data.html],
-                        {type: "text/html"}
-                    ),
-                    "text/plain": new Blob(
-                        [data.text],
-                        {type: "text/plain"}
-                    )
-                });
-
-                await navigator.clipboard.write([item]);
+                await navigator.clipboard.write([
+                    new ClipboardItem({
+                        "text/html": new Blob(
+                            [data.html],
+                            {type: "text/html"}
+                        ),
+                        "text/plain": new Blob(
+                            [data.text],
+                            {type: "text/plain"}
+                        )
+                    })
+                ]);
 
                 status.textContent =
-                    "Formatted message copied. Open the email draft " +
-                    "and paste into its blank message body. " +
-                    "Check bold formatting before sending.";
+                    "Message copied. Open draft and paste.";
 
             } catch (error) {
                 status.textContent =
-                    "Formatted clipboard access is unavailable. " +
-                    "Expand the formatted preview, select its text, " +
-                    "and copy manually. The email app may still " +
-                    "remove formatting.";
+                    "Formatted copy was blocked. Try opening " +
+                    "the app directly in Safari or Chrome.";
             }
         };
 
@@ -292,12 +326,11 @@ def share_html(recipient, subject, body, pdf, filename):
                 await navigator.clipboard.writeText(data.recipient);
 
                 status.textContent =
-                    "Recipient copied. Copy formatted message again " +
+                    "Recipient copied. Copy message again " +
                     "before pasting the email body.";
 
             } catch (error) {
-                status.textContent =
-                    "Copy this recipient: " + data.recipient;
+                status.textContent = data.recipient;
             }
         };
     </script>
@@ -306,13 +339,14 @@ def share_html(recipient, subject, body, pdf, filename):
 """
 
     replacements = {
+        "__PDF_URL__": pdf_url,
+        "__FILENAME__": html.escape(filename, quote=True),
         "__MAILTO__": html.escape(mailto, quote=True),
-        "__PREVIEW__": rich_body,
         "__PAYLOAD__": payload,
     }
 
     return re.sub(
-        r"__MAILTO__|__PREVIEW__|__PAYLOAD__",
+        r"__PDF_URL__|__FILENAME__|__MAILTO__|__PAYLOAD__",
         lambda match: replacements[match.group()],
         template,
     )
