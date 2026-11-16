@@ -197,7 +197,7 @@ if "pdf" in st.session_state:
     st.divider()
     st.subheader("Send mail")
 
-    subject = "Your Employment Offer — Techno Inkai"
+    subject = "Offer Letter"
     body = default_body(name)
 
     st.caption(
