@@ -1,4 +1,4 @@
-"""Open email drafts and copy a formatted email message.
+"""Open blank email drafts and copy a formatted email message.
 
 No SMTP connection, mailbox password, or backend sending is used.
 """
@@ -92,6 +92,7 @@ def formatted_body(body):
     bold_phrases = [
         "Techno Inkai",
         "Employment Process",
+        "Working Guidelines",
         "70130 88594",
         "Monday–Friday",
         "11:00 AM – 03:00 PM",
@@ -107,13 +108,11 @@ def formatted_body(body):
 
     for match in pattern.finditer(body):
         chunks.append(html.escape(body[cursor:match.start()]))
-
         chunks.append(
             "<strong>"
             + html.escape(match.group())
             + "</strong>"
         )
-
         cursor = match.end()
 
     chunks.append(html.escape(body[cursor:]))
@@ -129,7 +128,7 @@ def formatted_body(body):
 
 
 def share_html(recipient, subject, body, pdf, filename):
-    """Build the draft link and formatted-message copy controls.
+    """Build a blank-body email draft and formatted-message controls.
 
     pdf and filename are retained for compatibility with app.py.
     The PDF must be downloaded and attached manually.
@@ -146,15 +145,14 @@ def share_html(recipient, subject, body, pdf, filename):
         ensure_ascii=True,
     ).replace("<", "\\u003c")
 
+    # Include only the recipient and subject.
+    # The message body is deliberately omitted.
     mailto = (
         "mailto:"
         + quote(recipient, safe="@")
         + "?"
         + urlencode(
-            {
-                "subject": subject,
-                "body": body,
-            },
+            {"subject": subject},
             quote_via=quote,
         )
     )
@@ -235,9 +233,9 @@ def share_html(recipient, subject, body, pdf, filename):
     </button>
 
     <p id="status" role="status" aria-live="polite">
-        Copy the formatted message, open the draft, then replace
-        its plain message by pasting. Attach the downloaded PDF
-        manually. Titan may remove formatting.
+        Copy the formatted message, open the email draft,
+        and paste into the blank message body.
+        Attach the downloaded PDF manually.
     </p>
 
     <details>
@@ -276,9 +274,9 @@ def share_html(recipient, subject, body, pdf, filename):
                 await navigator.clipboard.write([item]);
 
                 status.textContent =
-                    "Formatted message copied. Open the draft, " +
-                    "select its existing message, and paste to replace it. " +
-                    "Check the bold formatting before sending.";
+                    "Formatted message copied. Open the email draft " +
+                    "and paste into its blank message body. " +
+                    "Check bold formatting before sending.";
 
             } catch (error) {
                 status.textContent =
@@ -307,8 +305,6 @@ def share_html(recipient, subject, body, pdf, filename):
 </html>
 """
 
-    # Substitute user-controlled content in one pass so it cannot
-    # accidentally be interpreted as another template placeholder.
     replacements = {
         "__MAILTO__": html.escape(mailto, quote=True),
         "__PREVIEW__": rich_body,
