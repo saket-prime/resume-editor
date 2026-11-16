@@ -107,4 +107,4 @@ def to_pdf(docx):
         return data
 
 def filename(name):
-    return (re.sub(r'[^\w-]+', '_', name.strip(), flags=re.UNICODE).strip('_')[:80] or 'candidate') + '_offer.pdf'
+    return (re.sub(r'[^\w-]+', '_', name.strip(), flags=re.UNICODE).strip('_')[:80] or 'candidate') + '.pdf'
