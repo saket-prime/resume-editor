@@ -170,7 +170,6 @@ def share_html(recipient, subject, body, pdf, filename):
 </head>
 
 <body>
-    <button id="share" type="button">Send mail</button>
 
     <a
         href="__MAILTO__"
