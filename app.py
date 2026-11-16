@@ -182,6 +182,20 @@ st.markdown(
             padding-right: 1rem;
         }
     }
+    /* Reduce spacing between candidate details and controls. */
+[data-testid="stVerticalBlock"] {
+    gap: .55rem;
+}
+
+[data-testid="stVerticalBlockBorderWrapper"] {
+    border-radius: 12px;
+}
+
+[data-testid="stCaptionContainer"] p {
+    margin-bottom: 0;
+    font-size: .8rem;
+    line-height: 1.4;
+}
     </style>
     """,
     unsafe_allow_html=True,
@@ -197,9 +211,32 @@ def render_email_controls(name, email, pdf):
             pdf=pdf,
             filename=filename(name),
         ),
-        height=340,
-        scrolling=True,
+        height=95,
+        scrolling=False,
     )
+
+
+def render_candidate_card(result, number=None):
+    """Compact candidate details and a single row of action buttons."""
+    prefix = f"{number}. " if number is not None else ""
+
+    with st.container(border=True):
+        st.markdown(f"**{prefix}{result['name']}**")
+
+        st.caption(
+            f"{result['email']} · "
+            f"₹{format_salary(result['package'])} per project · "
+            f"{format_date(result['date'])}"
+        )
+
+        if result.get("error"):
+            st.error(result["error"])
+        else:
+            render_email_controls(
+                result["name"],
+                result["email"],
+                result["pdf"],
+            )
 
 
 def single_mode():
@@ -272,29 +309,7 @@ def single_mode():
         )
         return
 
-    with st.container(border=True):
-        st.subheader(result["name"])
-        st.write(result["email"])
-
-        st.caption(
-            f"Per-project pay: ₹{format_salary(result['package'])}"
-            f" · Date: {format_date(result['date'])}"
-        )
-
-        st.download_button(
-            "Download offer PDF",
-            data=result["pdf"],
-            file_name=filename(result["name"]),
-            mime="application/pdf",
-            key="single_download",
-            use_container_width=True,
-        )
-
-        render_email_controls(
-            result["name"],
-            result["email"],
-            result["pdf"],
-        )
+    render_candidate_card(result)
 
     st.caption(
         "After editing candidate details, click Generate offer PDF "
@@ -434,41 +449,8 @@ def bulk_mode():
         "The list below reflects your last submitted batch. "
         "After editing the pasted rows, click Generate offers again."
     )
-
-    batch_id = st.session_state["bulk_batch_id"]
-
-    for index, result in enumerate(results):
-        with st.container(border=True):
-            st.subheader(
-                f"{index + 1}. {result['name']}"
-            )
-
-            st.write(result["email"])
-
-            st.caption(
-                f"Per-project pay: "
-                f"₹{format_salary(result['package'])}"
-                f" · Date: {format_date(result['date'])}"
-            )
-
-            if result["error"]:
-                st.error(result["error"])
-                continue
-
-            st.download_button(
-                "Download offer PDF",
-                data=result["pdf"],
-                file_name=filename(result["name"]),
-                mime="application/pdf",
-                key=f"download_{batch_id}_{index}",
-                use_container_width=True,
-            )
-
-            render_email_controls(
-                result["name"],
-                result["email"],
-                result["pdf"],
-            )
+    for index, result in enumerate(results, start=1):
+        render_candidate_card(result, number=index)
 
 
 st.markdown(
