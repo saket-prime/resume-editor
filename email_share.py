@@ -1,0 +1,250 @@
+"""Open email drafts or share a PDF through the device's email apps.
+
+No SMTP connection, mailbox password, or backend email sending is used.
+"""
+
+import base64
+import html
+import json
+import re
+from urllib.parse import quote, urlencode
+
+
+def validate_email(value):
+    """Accept one plain email address."""
+    value = value.strip()
+
+    pattern = (
+        r"[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+"
+        r"@[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?"
+        r"\.[A-Za-z]{2,63}"
+    )
+
+    if len(value) > 254 or not re.fullmatch(pattern, value):
+        raise ValueError("Enter one valid email address.")
+
+    local, domain = value.rsplit("@", 1)
+
+    invalid_local = (
+        len(local) > 64
+        or local.startswith(".")
+        or local.endswith(".")
+        or ".." in local
+    )
+
+    invalid_domain = any(
+        not label
+        or label.startswith("-")
+        or label.endswith("-")
+        or len(label) > 63
+        for label in domain.split(".")
+    )
+
+    if invalid_local or invalid_domain:
+        raise ValueError("Enter one valid email address.")
+
+    return value
+
+
+def default_body(name):
+    """Predefined email message personalized with the candidate's name."""
+    return (
+        f"Dear {name.strip()},\n\n"
+        "Please find your employment offer attached. "
+        "Kindly review the document and follow the acceptance "
+        "instructions provided within it.\n\n"
+        "Regards,\n"
+        "Techno Inkai Team"
+    )
+
+
+def share_html(recipient, subject, body, pdf, filename):
+    """Build the device-sharing interface and email-draft fallback."""
+    recipient = validate_email(recipient)
+
+    payload = json.dumps(
+        {
+            "recipient": recipient,
+            "title": subject,
+            "text": body,
+            "filename": filename,
+            "pdf": base64.b64encode(pdf).decode("ascii"),
+        },
+        ensure_ascii=True,
+    ).replace("<", "\\u003c")
+
+    mailto = (
+        "mailto:"
+        + quote(recipient, safe="@")
+        + "?"
+        + urlencode(
+            {"subject": subject, "body": body},
+            quote_via=quote,
+        )
+    )
+
+    template = """
+<!doctype html>
+<html>
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+
+    <style>
+        body {
+            font: 14px system-ui, sans-serif;
+            color: #162c28;
+            margin: 0;
+        }
+
+        button,
+        a {
+            box-sizing: border-box;
+            font: 600 15px system-ui, sans-serif;
+            border-radius: 12px;
+            padding: 13px 17px;
+            cursor: pointer;
+            display: inline-block;
+            margin: 0 8px 10px 0;
+        }
+
+        button {
+            background: #19755d;
+            color: white;
+            border: 0;
+        }
+
+        a {
+            color: #19755d;
+            border: 1px solid #bdd5cb;
+            text-decoration: none;
+        }
+
+        .secondary {
+            background: #e4eee8;
+            color: #162c28;
+        }
+
+        #status {
+            line-height: 1.5;
+            overflow-wrap: anywhere;
+        }
+
+        button:disabled {
+            opacity: .6;
+            cursor: wait;
+        }
+
+        @media (max-width: 480px) {
+            button,
+            a {
+                width: 100%;
+                text-align: center;
+                margin-right: 0;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <button id="share" type="button">Send mail</button>
+
+    <a
+        href="__MAILTO__"
+        target="_blank"
+        rel="noopener noreferrer"
+    >
+        Open email draft
+    </a>
+
+    <button id="copy" class="secondary" type="button">
+        Copy recipient
+    </button>
+
+    <p id="status" role="status" aria-live="polite">
+        Send mail opens your device's sharing menu with the PDF
+        and message. Choose an email app.
+    </p>
+
+    <script>
+        const data = __PAYLOAD__;
+        const status = document.getElementById("status");
+        const shareButton = document.getElementById("share");
+        const copyButton = document.getElementById("copy");
+
+        const bytes = Uint8Array.from(
+            atob(data.pdf),
+            character => character.charCodeAt(0)
+        );
+
+        const file = new File(
+            [bytes],
+            data.filename,
+            {type: "application/pdf"}
+        );
+
+        copyButton.onclick = async () => {
+            try {
+                await navigator.clipboard.writeText(data.recipient);
+
+                status.textContent =
+                    "Recipient copied. Paste it into your email app.";
+            } catch (error) {
+                status.textContent =
+                    "Copy this recipient: " + data.recipient;
+            }
+        };
+
+        shareButton.onclick = async () => {
+            shareButton.disabled = true;
+
+            try {
+                if (
+                    !navigator.share ||
+                    !navigator.canShare ||
+                    !navigator.canShare({files: [file]})
+                ) {
+                    status.textContent =
+                        "PDF sharing is unavailable in this browser or " +
+                        "embedded app. Download the PDF above, select " +
+                        "Open email draft, and attach the downloaded file.";
+
+                    return;
+                }
+
+                await navigator.share({
+                    files: [file],
+                    title: data.title,
+                    text: data.text
+                });
+
+                status.textContent =
+                    "Sharing closed. Check the recipient, subject, " +
+                    "message, PDF attachment, and sending account in " +
+                    "your email app. Nothing is sent automatically.";
+
+            } catch (error) {
+                if (error.name === "AbortError") {
+                    status.textContent =
+                        "Sharing cancelled. You can try again.";
+                } else {
+                    status.textContent =
+                        "Sharing could not open. Download the PDF above, " +
+                        "then use Open email draft and attach it manually.";
+                }
+            } finally {
+                shareButton.disabled = false;
+            }
+        };
+    </script>
+</body>
+</html>
+"""
+
+    # Insert the payload last so message content cannot affect placeholders.
+    return template.replace(
+        "__MAILTO__",
+        html.escape(mailto, quote=True),
+    ).replace(
+        "__PAYLOAD__",
+        payload,
+    )
