@@ -1,11 +1,9 @@
-import csv
 import hashlib
-import io
-from decimal import Decimal, InvalidOperation
 
 import streamlit as st
 import streamlit.components.v1 as components
 
+from bulk_parser import parse_rows
 from email_share import default_body, share_html, validate_email
 from generator import (
     build_docx,
@@ -19,8 +17,6 @@ from generator import (
 
 
 EMAIL_SUBJECT = "OFFER LETTER — Techno Inkai"
-MAX_BULK_ROWS = 50
-
 
 st.set_page_config(
     page_title="Techno Inkai · Offer Studio",
@@ -40,18 +36,26 @@ st.markdown(
             ),
             #f7f8fa;
         color: #162c28;
+        color-scheme: light;
     }
 
     .block-container {
         max-width: 900px;
-        padding-top: 3rem;
+        padding-top: 2.5rem;
         padding-bottom: 3rem;
+    }
+
+    h1, h2, h3, h4,
+    [data-testid="stMarkdownContainer"],
+    [data-testid="stWidgetLabel"] p,
+    [data-testid="stCaptionContainer"] {
+        color: #162c28 !important;
     }
 
     h1 {
         font-size: clamp(2.2rem, 6vw, 3.8rem) !important;
         letter-spacing: -.055em;
-        line-height: 1.08 !important;
+        line-height: 1.1 !important;
     }
 
     .eyebrow {
@@ -59,55 +63,121 @@ st.markdown(
         font-weight: 700;
         letter-spacing: .17em;
         color: #317a66;
-        margin-bottom: 1.6rem;
+        margin-bottom: 1.4rem;
     }
 
     .intro {
-        font-size: 1.08rem;
-        color: #63766f;
-        max-width: 600px;
-        margin-bottom: 1.5rem;
+        color: #526b61;
+        font-size: 1.05rem;
+        margin: 1rem 0 1.5rem;
     }
 
-    .preview {
-        padding: 1.3rem 0;
-        border-top: 1px solid #e4ebe7;
-        border-bottom: 1px solid #e4ebe7;
-        margin: 1.2rem 0;
+    /* Override dark-theme input backgrounds and text. */
+    [data-baseweb="input"],
+    [data-baseweb="base-input"],
+    [data-baseweb="textarea"],
+    [data-testid="stTextArea"] textarea,
+    [data-testid="stTextInput"] input,
+    [data-testid="stNumberInput"] input {
+        background-color: #ffffff !important;
+        color: #162c28 !important;
+        -webkit-text-fill-color: #162c28 !important;
+        caret-color: #19755d !important;
     }
 
-    .preview span {
-        font-size: .8rem;
-        color: #63766f;
+    [data-baseweb="input"],
+    [data-baseweb="textarea"] {
+        border-color: #b8cec3 !important;
+        border-radius: 12px !important;
     }
 
-    .preview strong {
-        font-size: 1.55rem;
-        display: block;
-        margin-top: .3rem;
+    textarea::placeholder,
+    input::placeholder {
+        color: #71867c !important;
+        -webkit-text-fill-color: #71867c !important;
+        opacity: 1 !important;
+    }
+
+    textarea::selection,
+    input::selection {
+        background: #c9e9db;
+        color: #162c28;
     }
 
     .stButton button,
-    .stDownloadButton button {
+    .stDownloadButton button,
+    .stFormSubmitButton button {
+        background: #ffffff !important;
+        color: #195b46 !important;
+        border: 1px solid #b8cec3 !important;
+        border-radius: 12px !important;
         min-height: 3rem;
-        border-radius: 12px;
-        font-weight: 600;
+        font-weight: 600 !important;
     }
 
-    [data-testid="stVerticalBlockBorderWrapper"] {
+    .stButton button p,
+    .stDownloadButton button p,
+    .stFormSubmitButton button p {
+        color: #195b46 !important;
+    }
+
+    button[kind="primary"],
+    button[data-testid="stBaseButton-primary"],
+    button[data-testid="stBaseButton-primaryFormSubmit"] {
+        background: #19755d !important;
+        color: #ffffff !important;
+        border-color: #19755d !important;
+    }
+
+    button[kind="primary"] p,
+    button[data-testid="stBaseButton-primary"] p,
+    button[data-testid="stBaseButton-primaryFormSubmit"] p {
+        color: #ffffff !important;
+    }
+
+    button:disabled {
+        opacity: .55 !important;
+    }
+
+    [data-testid="stForm"] {
+        background: #ffffff;
+        border: 1px solid #d6e3dc;
         border-radius: 16px;
+        padding: 1.2rem;
+    }
+
+    [data-testid="stExpander"] {
+        background: #ffffff;
+        color: #162c28;
+        border-color: #d6e3dc;
+    }
+
+    [data-testid="stAlert"] {
+        background: #eef5f1 !important;
+        color: #162c28 !important;
+        border: 1px solid #cadfd3;
+    }
+
+    [data-testid="stAlert"] p,
+    [data-testid="stAlert"] li {
+        color: #162c28 !important;
+    }
+
+    [data-testid="stText"] {
+        color: #162c28 !important;
+        white-space: pre-wrap;
     }
 
     .footer {
+        color: #63796e;
         font-size: .8rem;
-        color: #6d7f77;
         margin-top: 2rem;
         line-height: 1.6;
     }
 
     @media (max-width: 600px) {
         .block-container {
-            padding-top: 1.7rem;
+            padding-top: 1.5rem;
             padding-left: 1rem;
             padding-right: 1rem;
         }
@@ -118,416 +188,254 @@ st.markdown(
 )
 
 
-def render_email_controls(candidate_name, recipient, pdf):
-    """Use the existing formatted-copy and blank-draft controls."""
+def render_email_controls(name, email, pdf):
     components.html(
         share_html(
-            recipient=recipient,
+            recipient=email,
             subject=EMAIL_SUBJECT,
-            body=default_body(candidate_name),
+            body=default_body(name),
             pdf=pdf,
-            filename=filename(candidate_name),
+            filename=filename(name),
         ),
-        height=320,
+        height=340,
         scrolling=True,
     )
 
 
-def parse_package(value):
-    """Accept package values such as 22, 22.5, or 22,000.
-
-    Values retain the app's existing units: thousands of rupees.
-    Therefore 22 means ₹22,000, while 22,000 means 22,000 thousands.
-    """
-    cleaned = value.strip().replace(",", "")
-
-    if not cleaned:
-        raise ValueError("Salary/package is missing.")
-
-    try:
-        amount = Decimal(cleaned)
-    except InvalidOperation as exc:
-        raise ValueError(
-            "Salary/package must be a number, such as 22."
-        ) from exc
-
-    # Reuse the generator's existing range and calculation validation.
-    salary_amount(amount)
-
-    return amount
-
-
-def parse_bulk_rows(raw_text):
-    """Parse rows copied directly from Excel or Google Sheets.
-
-    Spreadsheet clipboard data normally uses tabs between columns.
-    Comma-separated CSV is also supported.
-    """
-    if not raw_text.strip():
-        return [], ["Paste at least one candidate row."]
-
-    delimiter = "\t" if "\t" in raw_text else ","
-
-    try:
-        reader = csv.reader(
-            io.StringIO(raw_text),
-            delimiter=delimiter,
-            strict=True,
-        )
-
-        rows = [
-            (reader.line_num, [cell.strip() for cell in row])
-            for row in reader
-            if any(cell.strip() for cell in row)
-        ]
-
-    except csv.Error:
-        return [], [
-            "Could not read the pasted rows. Copy the three columns "
-            "directly from your spreadsheet and paste again."
-        ]
-
-    # Optionally ignore a recognizable column-header row.
-    if rows:
-        first = rows[0][1]
-
-        if len(first) == 3:
-            name_header = first[0].lower()
-            salary_header = first[1].lower()
-            email_header = first[2].lower()
-
-            if (
-                name_header in {
-                    "name",
-                    "candidate",
-                    "candidate name",
-                    "full name",
-                }
-                and salary_header in {
-                    "salary",
-                    "package",
-                    "ctc",
-                    "salary/package",
-                }
-                and email_header in {
-                    "email",
-                    "email address",
-                    "candidate email",
-                }
-            ):
-                rows = rows[1:]
-
-    if not rows:
-        return [], ["No candidate rows were found."]
-
-    if len(rows) > MAX_BULK_ROWS:
-        return [], [
-            f"Paste at most {MAX_BULK_ROWS} candidates at a time."
-        ]
-
-    candidates = []
-    errors = []
-
-    for row_number, cells in rows:
-        if len(cells) != 3:
-            errors.append(
-                f"Row {row_number}: expected exactly three columns "
-                "in this order: Name, Salary/Package, Email."
-            )
-            continue
-
-        name, package_text, email_text = cells
-
-        if (
-            not name
-            or len(name) > 120
-            or any(ord(character) < 32 for character in name)
-        ):
-            errors.append(
-                f"Row {row_number}: enter a name of 1–120 characters "
-                "without line breaks."
-            )
-            continue
-
-        try:
-            package = parse_package(package_text)
-            email = validate_email(email_text)
-
-        except ValueError as exc:
-            errors.append(f"Row {row_number}: {exc}")
-            continue
-
-        candidates.append(
-            {
-                "row_number": row_number,
-                "name": name,
-                "package": package,
-                "email": email,
-            }
-        )
-
-    return candidates, errors
-
-
-def render_single_mode():
+def single_mode():
     st.subheader("Create one offer")
 
-    name = st.text_input(
-        "Candidate’s full name",
-        placeholder="e.g. Kotha Himaja",
-        max_chars=120,
-        key="single_name",
-    )
+    with st.form("single_form", clear_on_submit=False):
+        name = st.text_input(
+            "Candidate’s full name",
+            placeholder="e.g. Kotha Himaja",
+            max_chars=120,
+        )
 
-    recipient = st.text_input(
-        "Candidate’s email address",
-        placeholder="candidate@example.com",
-        max_chars=254,
-        key="single_email",
-    )
+        email = st.text_input(
+            "Candidate’s email address",
+            placeholder="candidate@example.com",
+            max_chars=254,
+        )
 
-    package = st.number_input(
-        "CTC in thousands (₹)",
-        min_value=0.0,
-        max_value=1000000.0,
-        value=16.0,
-        step=1.0,
-        help=(
-            "Enter 16 for ₹16,000. "
-            "Per-project pay = CTC × 1,000 ÷ 4."
-        ),
-        key="single_package",
-    )
+        package = st.number_input(
+            "CTC in thousands (₹)",
+            min_value=0.0,
+            max_value=1000000.0,
+            value=16.0,
+            step=1.0,
+        )
+
+        st.caption(
+            "16 means ₹16,000. Per-project pay will be ₹4,000."
+        )
+
+        submitted = st.form_submit_button(
+            "Generate offer PDF",
+            type="primary",
+            use_container_width=True,
+        )
 
     day = today_india()
-    pay = format_salary(package) if package > 0 else "—"
 
-    st.markdown(
-        f"""
-        <div class="preview">
-            <span>PER PROJECT · CTC ÷ 4</span>
-            <strong>₹{pay}</strong>
-            <span>
-                Issue date · {format_date(day)} · India time
-            </span>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+    if submitted:
+        # Remove an older offer before processing new details.
+        st.session_state.pop("single_result", None)
 
-    signature = (
-        name.strip(),
-        str(package),
-        day.isoformat(),
-    )
-
-    if st.session_state.get("single_signature") != signature:
-        st.session_state.pop("single_pdf", None)
-
-    if st.button(
-        "Generate offer PDF →",
-        type="primary",
-        use_container_width=True,
-        key="generate_single",
-    ):
         try:
-            with st.spinner("Preparing your offer…"):
+            address = validate_email(email)
+
+            with st.spinner("Preparing the offer PDF…"):
                 document = build_docx(name, package, day=day)
                 pdf = to_pdf(document)
 
-            st.session_state["single_pdf"] = pdf
-            st.session_state["single_signature"] = signature
+            st.session_state["single_result"] = {
+                "name": name.strip(),
+                "email": address,
+                "package": package,
+                "date": day,
+                "pdf": pdf,
+            }
 
         except (ValueError, RuntimeError, OSError) as exc:
             st.error(str(exc))
 
-    if "single_pdf" not in st.session_state:
+    result = st.session_state.get("single_result")
+
+    if not result:
         return
 
-    pdf = st.session_state["single_pdf"]
-
-    st.success("Your offer is ready.")
-
-    st.download_button(
-        "Download offer PDF ↓",
-        data=pdf,
-        file_name=filename(name),
-        mime="application/pdf",
-        type="primary",
-        use_container_width=True,
-        key="download_single",
-    )
-
-    st.divider()
-    st.subheader("Prepare email")
-
-    with st.expander("Preview email message"):
-        st.write(f"Subject: {EMAIL_SUBJECT}")
-        st.text(default_body(name))
-
-    try:
-        email = validate_email(recipient)
-
-    except ValueError:
+    if result["date"] != day:
         st.info(
-            "Enter a valid candidate email above "
-            "to enable the email controls."
+            "The previous offer was generated on another date. "
+            "Click Generate offer PDF to create today's version."
+        )
+        return
+
+    with st.container(border=True):
+        st.subheader(result["name"])
+        st.write(result["email"])
+
+        st.caption(
+            f"Per-project pay: ₹{format_salary(result['package'])}"
+            f" · Date: {format_date(result['date'])}"
         )
 
-    else:
-        render_email_controls(name, email, pdf)
+        st.download_button(
+            "Download offer PDF",
+            data=result["pdf"],
+            file_name=filename(result["name"]),
+            mime="application/pdf",
+            key="single_download",
+            use_container_width=True,
+        )
+
+        render_email_controls(
+            result["name"],
+            result["email"],
+            result["pdf"],
+        )
+
+    st.caption(
+        "After editing candidate details, click Generate offer PDF "
+        "again to update this offer."
+    )
 
 
-def render_bulk_mode():
+def bulk_mode():
     st.subheader("Create offers in bulk")
 
     st.write(
-        "Copy the three columns from your sheet and paste them below: "
-        "**Name → Salary/Package → Email**."
+        "Paste rows copied from your spreadsheet. "
+        "**Name, package, and email can be in any column order. "
+        "Blank cells are ignored.**"
     )
 
     st.caption(
-        "Use the same package units as single mode: "
-        "22 means ₹22,000 and produces ₹5,500 per project. "
-        f"Maximum {MAX_BULK_ROWS} candidates per batch."
+        "Example: two blank cells, candidate name, 22, email. "
+        "Package 22 produces ₹5,500 per project. "
+        "Maximum 50 candidates per batch."
     )
 
-    raw_text = st.text_area(
-        "Paste spreadsheet rows",
-        height=230,
-        placeholder=(
-            "Candidate One\t22\tcandidate1@example.com\n"
-            "Candidate Two\t20\tcandidate2@example.com"
-        ),
-        key="bulk_input",
-        help=(
-            "Copy cells directly from Excel or Google Sheets. "
-            "Keep the order Name, Salary/Package, Email. "
-            "A header row is optional."
-        ),
-    )
+    # A form submits the text area through the button.
+    # Ctrl+Enter is optional, not required.
+    with st.form("bulk_form", clear_on_submit=False):
+        raw_text = st.text_area(
+            "Paste your candidate rows",
+            height=240,
+            placeholder=(
+                "Jane Doe\t22\tjane@example.com\n"
+                "\t\tjohn@example.com\t20\tJohn Smith"
+            ),
+            help=(
+                "Copy cells directly from Excel or Google Sheets. "
+                "Blank columns are allowed. Include one name, "
+                "one numeric package, and one email per row."
+            ),
+        )
+
+        submitted = st.form_submit_button(
+            "Generate offers",
+            type="primary",
+            use_container_width=True,
+        )
 
     day = today_india()
 
-    fingerprint = hashlib.sha256(
-        (raw_text + "\n" + day.isoformat()).encode("utf-8")
-    ).hexdigest()
-
-    # Do not display PDFs generated from different rows or another date.
-    if st.session_state.get("bulk_fingerprint") != fingerprint:
+    if submitted:
         st.session_state.pop("bulk_results", None)
 
-    if not raw_text.strip():
-        st.info(
-            "Paste your rows to see a preview and generate their offers."
-        )
-        return
-
-    candidates, errors = parse_bulk_rows(raw_text)
-
-    if errors:
-        st.error(
-            "Please correct these rows before generating the batch:\n\n"
-            + "\n".join(f"- {error}" for error in errors)
+        candidates, errors = parse_rows(
+            raw_text,
+            validate_email=validate_email,
+            salary_amount=salary_amount,
+            limit=50,
         )
 
-    if candidates:
-        st.write(
-            f"**{len(candidates)} valid candidate(s)** · "
-            f"Issue date: **{format_date(day)}**"
-        )
-
-        st.dataframe(
-            [
-                {
-                    "Name": candidate["name"],
-                    "Package (₹ thousands)": str(candidate["package"]),
-                    "Per-project pay (₹)": format_salary(
-                        candidate["package"]
-                    ),
-                    "Email": candidate["email"],
-                }
-                for candidate in candidates
-            ],
-            use_container_width=True,
-            hide_index=True,
-        )
-
-    generate = st.button(
-        "Generate all offer PDFs →",
-        type="primary",
-        use_container_width=True,
-        disabled=bool(errors) or not candidates,
-        key="generate_bulk",
-    )
-
-    if generate:
-        results = []
-        total = len(candidates)
-
-        progress = st.progress(
-            0,
-            text="Starting PDF generation…",
-        )
-
-        # The same captured date is used for every PDF in this batch.
-        for index, candidate in enumerate(candidates):
-            progress.progress(
-                index / total,
-                text=(
-                    f"Generating {index + 1} of {total}: "
-                    f"{candidate['name']}"
-                ),
+        if errors:
+            st.error(
+                "Please correct the following rows and "
+                "click Generate offers again:"
             )
 
-            result = dict(candidate)
+            for error in errors:
+                st.write(f"• {error}")
 
-            try:
-                document = build_docx(
-                    candidate["name"],
-                    candidate["package"],
-                    day=day,
+        else:
+            results = []
+
+            progress = st.progress(
+                0,
+                text="Starting PDF generation…",
+            )
+
+            for index, candidate in enumerate(candidates):
+                progress.progress(
+                    index / len(candidates),
+                    text=(
+                        f"Generating {index + 1} "
+                        f"of {len(candidates)}: "
+                        f"{candidate['name']}"
+                    ),
                 )
 
-                result["pdf"] = to_pdf(document)
-                result["error"] = None
+                result = {
+                    **candidate,
+                    "date": day,
+                    "pdf": None,
+                    "error": None,
+                }
 
-            except (ValueError, RuntimeError, OSError) as exc:
-                result["pdf"] = None
-                result["error"] = str(exc)
+                try:
+                    document = build_docx(
+                        candidate["name"],
+                        candidate["package"],
+                        day=day,
+                    )
 
-            results.append(result)
+                    result["pdf"] = to_pdf(document)
 
-        progress.progress(
-            1.0,
-            text="Batch processing complete.",
-        )
+                except (ValueError, RuntimeError, OSError) as exc:
+                    result["error"] = str(exc)
 
-        st.session_state["bulk_results"] = results
-        st.session_state["bulk_fingerprint"] = fingerprint
+                results.append(result)
+
+            progress.empty()
+
+            st.session_state["bulk_results"] = results
+            st.session_state["bulk_date"] = day
+
+            st.session_state["bulk_batch_id"] = hashlib.sha256(
+                raw_text.encode("utf-8")
+            ).hexdigest()[:16]
 
     results = st.session_state.get("bulk_results")
 
     if not results:
         return
 
+    if st.session_state.get("bulk_date") != day:
+        st.info(
+            "These offers were generated on another date. "
+            "Click Generate offers to create today's versions."
+        )
+        return
+
     successful = sum(
         result["pdf"] is not None
         for result in results
     )
-    failed = len(results) - successful
 
-    if failed:
-        st.warning(
-            f"{successful} PDF(s) generated. "
-            f"{failed} candidate(s) could not be processed."
-        )
-    else:
-        st.success(
-            f"All {successful} offer PDFs are ready."
-        )
+    st.success(
+        f"{successful} of {len(results)} offer PDFs generated."
+    )
 
-    st.subheader("Candidate offers")
+    st.caption(
+        "The list below reflects your last submitted batch. "
+        "After editing the pasted rows, click Generate offers again."
+    )
+
+    batch_id = st.session_state["bulk_batch_id"]
 
     for index, result in enumerate(results):
         with st.container(border=True):
@@ -538,8 +446,9 @@ def render_bulk_mode():
             st.write(result["email"])
 
             st.caption(
-                f"Per-project pay: ₹{format_salary(result['package'])}"
-                f" · Issue date: {format_date(day)}"
+                f"Per-project pay: "
+                f"₹{format_salary(result['package'])}"
+                f" · Date: {format_date(result['date'])}"
             )
 
             if result["error"]:
@@ -547,19 +456,18 @@ def render_bulk_mode():
                 continue
 
             st.download_button(
-                "Download offer PDF ↓",
+                "Download offer PDF",
                 data=result["pdf"],
                 file_name=filename(result["name"]),
                 mime="application/pdf",
-                type="primary",
+                key=f"download_{batch_id}_{index}",
                 use_container_width=True,
-                key=f"bulk_download_{fingerprint}_{index}",
             )
 
             render_email_controls(
-                candidate_name=result["name"],
-                recipient=result["email"],
-                pdf=result["pdf"],
+                result["name"],
+                result["email"],
+                result["pdf"],
             )
 
 
@@ -574,9 +482,9 @@ st.title("A new beginning.\nOne simple letter.")
 
 st.session_state.setdefault("offer_mode", "single")
 
-single_column, bulk_column = st.columns(2)
+left, right = st.columns(2)
 
-with single_column:
+with left:
     if st.button(
         "Single candidate",
         type=(
@@ -585,12 +493,11 @@ with single_column:
             else "secondary"
         ),
         use_container_width=True,
-        key="single_mode_button",
     ):
         st.session_state["offer_mode"] = "single"
         st.rerun()
 
-with bulk_column:
+with right:
     if st.button(
         "Bulk mode",
         type=(
@@ -599,38 +506,28 @@ with bulk_column:
             else "secondary"
         ),
         use_container_width=True,
-        key="bulk_mode_button",
     ):
         st.session_state["offer_mode"] = "bulk"
         st.rerun()
 
 st.markdown(
-    """
-    <p class="intro">
-        Create personalized offer letters from your original template.
-        Prepare one offer or an entire batch.
-    </p>
-    """,
+    '<p class="intro">'
+    "Create one personalized offer or prepare an entire batch."
+    "</p>",
     unsafe_allow_html=True,
 )
 
 if st.session_state["offer_mode"] == "single":
-    render_single_mode()
+    single_mode()
 else:
-    render_bulk_mode()
-
-st.caption(
-    "Email drafts contain the recipient and subject only. "
-    "Use Copy formatted message, open the draft, and paste into "
-    "the blank message body. Attach the downloaded PDF manually. "
-    "Bold formatting depends on the email app."
-)
+    bulk_mode()
 
 st.markdown(
     """
     <div class="footer">
-        Original template. Three personalized details.<br>
-        PDFs stay in your browser session.
+        Copy the formatted message, open the email draft,
+        and paste into its blank message body.
+        Attach the downloaded PDF manually.<br>
         No emails are sent automatically.
     </div>
     """,
