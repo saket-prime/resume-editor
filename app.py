@@ -16,7 +16,7 @@ from generator import (
 )
 
 
-EMAIL_SUBJECT = "OFFER LETTER — Techno Inkai"
+EMAIL_SUBJECT = "OFFER LETTER"
 
 st.set_page_config(
     page_title="Techno Inkai · Offer Studio",
