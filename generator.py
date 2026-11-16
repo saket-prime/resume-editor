@@ -98,7 +98,7 @@ def to_pdf(docx):
                 capture_output=True, timeout=90, check=False)
         except subprocess.TimeoutExpired as exc:
             raise RuntimeError('PDF conversion took too long. Please try again.') from exc
-        output = root / 'offer.pdf'
+        output = root / 'offer_letter.pdf'
         if process.returncode != 0 or not output.exists():
             raise RuntimeError('PDF conversion failed. Check the LibreOffice installation and available memory.')
         data = output.read_bytes()
