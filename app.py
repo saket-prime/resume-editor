@@ -192,7 +192,7 @@ st.markdown(
 }
 
 [data-testid="stCaptionContainer"] p {
-    margin-bottom: 0;
+    margin-bottom: 8px;
     font-size: .8rem;
     line-height: 1.4;
 }
