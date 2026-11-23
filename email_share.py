@@ -68,12 +68,12 @@ def default_body(name):
         "- Passport-size Photograph\n"
         "- Bank Details\n\n"
         "All documents must also be shared on WhatsApp "
-        "at 70130 88594.\n\n"
+        "at 90523 02759 .\n\n"
         "Working Guidelines\n\n"
         "- Working hours are flexible (Monday–Friday).\n"
         "- Technical support hours: 11:00 AM – 03:00 PM "
         "(Lunch: 1:00 PM – 2:00 PM).\n"
-        "- Contact support at 70130 88594 for technical assistance "
+        "- Contact support at 90523 02759 for technical assistance "
         "(Calls only for technical issues; otherwise, WhatsApp text).\n"
         "- Copy-paste and use of auto-correction/auto-spacing "
         "software is strictly prohibited.\n"
@@ -84,7 +84,7 @@ def default_body(name):
         "Regards,\n"
         "Technical Support Team\n"
         "Techno Inkai\n"
-        "Contact: 70130 88594"
+        "Contact: 90523 02759"
     )
 
 
