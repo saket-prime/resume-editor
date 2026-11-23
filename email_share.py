@@ -94,7 +94,7 @@ def formatted_body(body):
         "Techno Inkai",
         "Employment Process",
         "Working Guidelines",
-        "70130 88594",
+        "90523 02759",
         "Monday–Friday",
         "11:00 AM – 03:00 PM",
         "1:00 PM – 2:00 PM",
